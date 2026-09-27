@@ -239,10 +239,15 @@ bankSync.post(
       const booked = [];
       const pending = [];
 
-      for (const trans of Object.values(transactions)) {
-        if (typeof trans !== 'object' || Object.keys(trans).length === 0) {
+      for (const providerTrans of Object.values(transactions)) {
+        if (
+          typeof providerTrans !== 'object' ||
+          Object.keys(providerTrans).length === 0
+        ) {
           continue;
         }
+        // The rows are changed below; leave the provider's objects intact.
+        const trans = { ...providerTrans };
 
         const newTrans = {};
 
@@ -266,11 +271,16 @@ bankSync.post(
           trans.amount *= -1;
         }
 
-        let amountInCurrency = trans.amountInAccountCurrency ?? trans.amount;
-        amountInCurrency = Math.round(amountInCurrency * 100) / 100;
+        const amountInCurrency = trans.amountInAccountCurrency ?? trans.amount;
+        if (
+          typeof amountInCurrency !== 'number' ||
+          !Number.isFinite(amountInCurrency)
+        ) {
+          throw new Error('Invalid Pluggy transaction amount');
+        }
 
         newTrans.transactionAmount = {
-          amount: amountInCurrency,
+          amount: String(amountInCurrency),
           currency: trans.currencyCode,
         };
 
