@@ -3,6 +3,7 @@ import { logger } from '#platform/server/log';
 import { createApp } from '#server/app';
 import * as encryption from '#server/encryption';
 import { PostError } from '#server/errors';
+import { notifyFxContextChanged } from '#server/exchange-rates/context';
 import { get, post } from '#server/post';
 import { getServer, isValidBaseURL } from '#server/server-config';
 import type { OpenIdConfig } from '#types/models';
@@ -294,6 +295,7 @@ async function signIn(
   }
 
   await asyncStorage.setItem('user-token', res.token);
+  await notifyFxContextChanged('session');
   return {};
 }
 
@@ -316,11 +318,13 @@ async function signOut() {
     'lastBudget',
     'readOnly',
   ]);
+  await notifyFxContextChanged('session');
   return 'ok';
 }
 
 async function setToken({ token }: { token: string }) {
   await asyncStorage.setItem('user-token', token);
+  await notifyFxContextChanged('session');
 }
 
 async function enableOpenId(openIdConfig: { openId: OpenIdConfig }) {
