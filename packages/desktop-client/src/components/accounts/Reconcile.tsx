@@ -19,6 +19,7 @@ import type { TransObjectLiteral } from '@actual-app/core/types/util';
 import { format as formatDate } from 'date-fns';
 import { t } from 'i18next';
 
+import { useAmountPrecision } from '#hooks/useAmountPrecision';
 import { useDateFormat } from '#hooks/useDateFormat';
 import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
@@ -45,7 +46,7 @@ export function ReconcilingMessage({
       value: 0,
       query: balanceQuery.query.filter({ cleared: true }),
     }) ?? 0;
-  const format = useFormat();
+  const format = useFormat(useAmountPrecision());
   const targetDiff = targetBalance - cleared;
 
   const clearedBalance = format(cleared, 'financial');
@@ -134,13 +135,21 @@ export function ReconcileMenu({
   onClose,
 }: ReconcileMenuProps) {
   const balanceQuery = bindings.accountBalance(account.id);
-  const clearedBalance = useSheetValue<'account', `balance-${string}-cleared`>({
-    name: (balanceQuery.name + '-cleared') as `balance-${string}-cleared`,
-    value: null,
-    query: balanceQuery.query.filter({ cleared: true }),
-  });
+  // Foreign accounts reconcile against their native cleared balance.
+  const clearedBalance = useSheetValue<
+    'account',
+    `balance-${string}-cleared` | 'nativeBalanceCleared'
+  >(
+    account.currency
+      ? bindings.accountNativeBalanceCleared(account.id)
+      : {
+          name: (balanceQuery.name + '-cleared') as `balance-${string}-cleared`,
+          value: null,
+          query: balanceQuery.query.filter({ cleared: true }),
+        },
+  );
   const lastSyncedBalance = account.balance_current;
-  const format = useFormat();
+  const format = useFormat(useAmountPrecision());
   const dateFormat = useDateFormat() || 'MM/dd/yyyy';
   const locale = useLocale();
 
@@ -153,7 +162,7 @@ export function ReconcileMenu({
   useEffect(() => {
     if (clearedBalance != null) {
       exactAmount.current = clearedBalance;
-      setInputValue(format(clearedBalance, 'financial'));
+      setInputValue(format.forEdit(clearedBalance));
     }
   }, [clearedBalance, format]);
 
@@ -167,7 +176,11 @@ export function ReconcileMenu({
     const amount =
       inputValue == null
         ? clearedBalance
-        : (exactAmount.current ?? format.fromEdit(inputValue, clearedBalance));
+        : (exactAmount.current ?? format.fromEdit(inputValue));
+
+    if (inputValue != null && amount == null) {
+      return;
+    }
 
     onReconcile(amount);
     onClose();
@@ -203,7 +216,7 @@ export function ReconcileMenu({
             <Button
               onPress={() => {
                 exactAmount.current = lastSyncedBalance;
-                setInputValue(format(lastSyncedBalance, 'financial'));
+                setInputValue(format.forEdit(lastSyncedBalance));
               }}
               style={{ marginBottom: 7 }}
             >

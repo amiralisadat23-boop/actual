@@ -213,12 +213,15 @@ bankSync.post(
         res.locals.allowGlobalBankSync,
       );
 
-      let startingBalance = parseInt(
-        Math.round(account.balance * 100).toString(),
-      );
-      if (account.type === 'CREDIT') {
-        startingBalance = -startingBalance;
+      if (
+        typeof account.balance !== 'number' ||
+        !Number.isFinite(account.balance)
+      ) {
+        throw new Error('Invalid Pluggy balance');
       }
+      const startingBalance = String(
+        account.type === 'CREDIT' ? -account.balance : account.balance,
+      );
       const date = getDate(account.updatedAt);
 
       const balances = [
@@ -236,10 +239,15 @@ bankSync.post(
       const booked = [];
       const pending = [];
 
-      for (const trans of Object.values(transactions)) {
-        if (typeof trans !== 'object' || Object.keys(trans).length === 0) {
+      for (const providerTrans of Object.values(transactions)) {
+        if (
+          typeof providerTrans !== 'object' ||
+          Object.keys(providerTrans).length === 0
+        ) {
           continue;
         }
+        // The rows are changed below; leave the provider's objects intact.
+        const trans = { ...providerTrans };
 
         const newTrans = {};
 
@@ -263,12 +271,22 @@ bankSync.post(
           trans.amount *= -1;
         }
 
-        let amountInCurrency = trans.amountInAccountCurrency ?? trans.amount;
-        amountInCurrency = Math.round(amountInCurrency * 100) / 100;
+        const amountInCurrency = trans.amountInAccountCurrency ?? trans.amount;
+        if (
+          typeof amountInCurrency !== 'number' ||
+          !Number.isFinite(amountInCurrency)
+        ) {
+          throw new Error('Invalid Pluggy transaction amount');
+        }
 
+        // amountInAccountCurrency is in the account's currency; otherwise
+        // the amount is in the transaction's own currency.
         newTrans.transactionAmount = {
-          amount: amountInCurrency,
-          currency: trans.currencyCode,
+          amount: String(amountInCurrency),
+          currency:
+            trans.amountInAccountCurrency != null
+              ? account.currencyCode
+              : trans.currencyCode,
         };
 
         newTrans.transactionId = trans.id;
@@ -300,6 +318,7 @@ bankSync.post(
         data: {
           balances,
           startingBalance,
+          startingBalanceCurrency: account.currencyCode ?? null,
           transactions: {
             all: allSorted,
             booked: bookedSorted,
